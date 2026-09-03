@@ -257,10 +257,9 @@ function ProviderUsageChip({ provider }) {
     staleTime: REFRESH_MS
   })
 
-  const card = (data?.cards ?? []).find(c => c.provider === provider)
-  if (!card) return null
-
-  const entry = chipEntryFor(card)
+  // Hooks stay above the early return: `card` is null on first load, and a
+  // return before useState/useRef changes the hook count (-> React #310 crash
+  // on restart, see desktop.log error-boundary contrib:account-usage).
   const [open, setOpen] = useState(false)
   // Hover bridge grace: the content portals to document.body, so moving the
   // cursor from chip to popover crosses a few px of dead space. Closing
@@ -278,6 +277,11 @@ function ProviderUsageChip({ provider }) {
   // Hover owns visibility, click owns navigation: every close path always
   // applies, so nothing can pin the popover open.
   const markHover = v => { if (v) showNow(); else scheduleClose() }
+
+  const card = (data?.cards ?? []).find(c => c.provider === provider)
+  if (!card) return null
+
+  const entry = chipEntryFor(card)
 
   return jsx(Popover, {
     open,
