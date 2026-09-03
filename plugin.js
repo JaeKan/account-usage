@@ -135,6 +135,9 @@ function WindowRow({ w, provider }) {
   const resetLabel = formatResetAt(w.reset_at)
   const openRouterHeadline = provider === 'openrouter' ? openRouterText(w) : null
   const headline = openRouterHeadline ?? (w.used_percent != null ? `${w.used_percent.toFixed(1)}%` : (w.detail ?? '\u2014'))
+  // Detail line is only useful when it adds info beyond the headline (i.e.
+  // headline is a computed used/left summary, not just the raw detail text).
+  const showDetail = w.detail && headline !== w.detail
 
   return jsxs('div', {
     className: 'flex flex-col gap-0.5',
@@ -162,7 +165,7 @@ function WindowRow({ w, provider }) {
             })
           })
         : null,
-      w.detail && provider !== 'openrouter' ? jsx('div', { className: 'text-(--ui-text-tertiary)', children: w.detail }) : null,
+      showDetail ? jsx('div', { className: 'text-(--ui-text-tertiary)', children: w.detail }) : null,
       resetLabel ? jsx('div', { className: 'text-(--ui-text-tertiary)', children: `resets ${resetLabel}` }) : null
     ]
   })
@@ -214,10 +217,10 @@ function chipEntryFor(card) {
   const windows = card.windows ?? []
 
   if (card.provider === 'openrouter') {
-    const withAmounts = windows.filter(w => w.amount_usd != null)
+    const withAmounts = windows.map(w => ({ w, amounts: parseOpenRouterAmounts(w) })).filter(x => x.amounts)
     if (withAmounts.length) {
-      const tightest = withAmounts.reduce((min, w) => (w.amount_usd < min.amount_usd ? w : min))
-      const text = openRouterText(tightest)
+      const tightest = withAmounts.reduce((min, x) => (x.amounts.remaining < min.amounts.remaining ? x : min))
+      const text = openRouterText(tightest.w)
       if (text) return { provider: card.provider, available: true, text }
     }
   }
