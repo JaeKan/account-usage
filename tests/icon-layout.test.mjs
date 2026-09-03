@@ -39,3 +39,9 @@ test('hover shows the popover, click opens the usage page', () => {
   assert.match(source, /setTimeout\(\(\) => setOpen\(false\), 150\)/)
   assert.match(source, /onCloseAutoFocus: e => e\.preventDefault\(\)/)
 })
+
+test('each chip is individually show/hide-toggleable in the statusbar menu', () => {
+  assert.match(source, /data: \{ toggleLabel: 'Codex usage' \}/)
+  assert.match(source, /data: \{ toggleLabel: 'Claude usage' \}/)
+  assert.match(source, /data: \{ toggleLabel: 'OpenRouter usage' \}/)
+})

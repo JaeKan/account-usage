@@ -346,18 +346,21 @@ export default {
       id: 'openai-codex-usage',
       area: 'statusBar.left',
       order: 140,
+      data: { toggleLabel: 'Codex usage' },
       render: () => jsx(ProviderUsageChip, { provider: 'openai-codex' })
     })
     ctx.register({
       id: 'anthropic-usage',
       area: 'statusBar.left',
       order: 141,
+      data: { toggleLabel: 'Claude usage' },
       render: () => jsx(ProviderUsageChip, { provider: 'anthropic' })
     })
     ctx.register({
       id: 'openrouter-usage',
       area: 'statusBar.left',
       order: 142,
+      data: { toggleLabel: 'OpenRouter usage' },
       render: () => jsx(ProviderUsageChip, { provider: 'openrouter' })
     })
   }
