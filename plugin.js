@@ -302,7 +302,8 @@ function OpenRouterTooltip({ windows, plan }) {
   return jsxs('div', {
     className: 'flex min-w-52 flex-col gap-1.5',
     children: [
-      jsx('div', { className: 'font-medium text-foreground', children: plan ? `OpenRouter (${plan})` : 'OpenRouter' }),
+      jsx('div', { className: 'font-medium text-foreground', children: 'OpenRouter' }),
+      plan ? jsx('div', { className: 'text-(--ui-text-tertiary)', children: `Plan: ${plan}` }) : null,
       ...sections
     ]
   })
@@ -312,9 +313,8 @@ function OpenRouterTooltip({ windows, plan }) {
 // row with progress bar, so hover shows the full breakdown.
 function providerTooltip(card) {
   const label = PROVIDER_LABEL[card.provider] ?? card.provider
-  const title = card.plan ? `${label} (${card.plan})` : label
   if (!card.available) {
-    return jsx('div', { children: `${title}: ${card.unavailable_reason || 'not connected'}` })
+    return jsx('div', { children: `${label}: ${card.unavailable_reason || 'not connected'}` })
   }
 
   const windows = card.windows ?? []
@@ -322,7 +322,8 @@ function providerTooltip(card) {
   return jsxs('div', {
     className: 'flex flex-col gap-1',
     children: [
-      jsx('div', { className: 'font-medium text-foreground', children: title }),
+      jsx('div', { className: 'font-medium text-foreground', children: label }),
+      card.plan ? jsx('div', { className: 'text-(--ui-text-tertiary)', children: `Plan: ${card.plan}` }) : null,
       ...windows.map((w, i) => jsx(WindowRow, { w, provider: card.provider, key: i }))
     ]
   })
