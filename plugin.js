@@ -302,26 +302,31 @@ function OpenRouterTooltip({ windows, plan }) {
   }
   for (const w of limits) {
     const amounts = parseOpenRouterAmounts(w)
-    const total = amounts.used + amounts.remaining
-    const frac = total > 0 ? Math.max(0, Math.min(1, amounts.remaining / total)) : 0
+    const hasUsed = amounts.used != null
+    const total = hasUsed ? amounts.used + amounts.remaining : null
+    const frac = total != null && total > 0 ? Math.max(0, Math.min(1, amounts.remaining / total)) : null
     sections.push(jsxs('div', {
       className: 'flex flex-col gap-0.5 border-t border-(--ui-stroke-secondary) pt-1',
       children: [
         jsx('div', { className: 'text-(--ui-text-tertiary)', children: w.label }),
-        jsxs('div', {
-          className: 'flex items-center justify-between gap-2',
-          children: [
-            jsx('span', { className: 'tabular-nums text-foreground', children: `$${amounts.used.toFixed(2)} used` }),
-            jsx('span', { className: 'tabular-nums text-foreground', children: `$${amounts.remaining.toFixed(2)} left` })
-          ]
-        }),
-        jsx('div', {
-          className: 'h-1 w-full overflow-hidden rounded-full bg-(--ui-stroke-secondary)',
-          children: jsx('div', {
-            className: 'h-full rounded-full bg-(--ui-accent) transition-[width]',
-            style: { width: `${frac * 100}%` }
-          })
-        })
+        hasUsed
+          ? jsxs('div', {
+              className: 'flex items-center justify-between gap-2',
+              children: [
+                jsx('span', { className: 'tabular-nums text-foreground', children: `$${amounts.used.toFixed(2)} used` }),
+                jsx('span', { className: 'tabular-nums text-foreground', children: `$${amounts.remaining.toFixed(2)} left` })
+              ]
+            })
+          : jsx('div', { className: 'tabular-nums text-foreground', children: `$${amounts.remaining.toFixed(2)} left` }),
+        frac != null
+          ? jsx('div', {
+              className: 'h-1 w-full overflow-hidden rounded-full bg-(--ui-stroke-secondary)',
+              children: jsx('div', {
+                className: 'h-full rounded-full bg-(--ui-accent) transition-[width]',
+                style: { width: `${frac * 100}%` }
+              })
+            })
+          : null
       ]
     }))
   }
