@@ -329,8 +329,23 @@ function providerTooltip(card) {
   })
 }
 
+function UsageChipPlaceholder({ provider, isError }) {
+  const label = PROVIDER_LABEL[provider] ?? provider
+  const text = isError ? '!' : '…'
+  return jsxs('span', {
+    className: 'inline-flex h-full items-center gap-1 px-1.5 text-[0.6875rem] text-(--ui-text-tertiary)',
+    role: 'status',
+    title: isError ? `${label} usage unavailable` : `${label} usage loading…`,
+    'aria-label': isError ? `${label} usage unavailable` : `${label} usage loading`,
+    children: [
+      jsx(ProviderIcon, { provider }),
+      jsx('span', { className: isError ? '' : 'animate-pulse', children: text })
+    ]
+  })
+}
+
 function ProviderUsageChip({ provider }) {
-  const { data } = useQuery({
+  const { data, isError } = useQuery({
     queryKey: ['account-usage'],
     queryFn: () => host.request('account.usage', {}),
     refetchInterval: REFRESH_MS,
@@ -359,7 +374,9 @@ function ProviderUsageChip({ provider }) {
   const markHover = v => { if (v) showNow(); else scheduleClose() }
 
   const card = (data?.cards ?? []).find(c => c.provider === provider)
-  if (!card) return null
+  // The initial RPC does three provider HTTP calls and has no persisted desktop
+  // cache. Keep the statusbar geometry visible until its first answer arrives.
+  if (!card) return jsx(UsageChipPlaceholder, { provider, isError })
 
   const entry = chipEntryFor(card)
 

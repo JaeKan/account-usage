@@ -21,6 +21,12 @@ test('registers one independent statusbar chip for each usage provider', () => {
   assert.doesNotMatch(source, /function UsageChip\(/)
 })
 
+test('shows a visible loading placeholder before the first account RPC resolves', () => {
+  assert.match(source, /function UsageChipPlaceholder\(\{ provider, isError \}\)/)
+  assert.match(source, /if \(!card\) return jsx\(UsageChipPlaceholder, \{ provider, isError \}\)/)
+  assert.match(source, /usage loading/)
+})
+
 test('hover shows the full breakdown popover', () => {
   assert.match(source, /function providerTooltip\(card\)/)
   assert.match(source, /children: providerTooltip\(card\)/)
