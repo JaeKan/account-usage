@@ -7,8 +7,9 @@ const source = readFileSync(new URL('../plugin.js', import.meta.url), 'utf8')
 test('statusbar provider glyphs use the measured optical vertical offsets', () => {
   assert.match(
     source,
-    /const ICON_OPTICAL_OFFSET_Y = \{\s*'openai-codex': 1,\s*anthropic: 1,\s*openrouter: 0\.5\s*\}/
+    /const ICON_OPTICAL_OFFSET_Y = \{\s*'openai-codex': 1,\s*anthropic: 1,\s*openrouter: 0\.5,\s*antigravity: 0\.5,\s*cursor: 0\.5\s*\}/
   )
+  assert.doesNotMatch(source, /\.svg\?raw/)
   assert.match(source, /transform: `translateY\(\$\{ICON_OPTICAL_OFFSET_Y\[provider\] \?\? 0}px\)`/)
 })
 
@@ -19,6 +20,19 @@ test('registers one independent statusbar chip for each usage provider', () => {
   }
 
   assert.doesNotMatch(source, /function UsageChip\(/)
+})
+
+test('registers chips in the requested statusbar order', () => {
+  const ids = ['openai-codex-usage', 'anthropic-usage', 'cursor-usage', 'antigravity-usage', 'openrouter-usage']
+  const positions = ids.map(id => source.indexOf(`id: '${id}'`))
+  assert.ok(positions.every(position => position >= 0))
+  assert.deepEqual(positions, [...positions].sort((a, b) => a - b))
+})
+
+test('uses web-sourced mono SVG paths for Cursor and Antigravity', () => {
+  assert.match(source, /thesvg \(MIT\)/)
+  assert.match(source, /M11\.503\.131 1\.891 5\.678/)
+  assert.match(source, /M21\.751 22\.607c1\.34 1\.005/)
 })
 
 test('shows a visible loading placeholder before the first account RPC resolves', () => {

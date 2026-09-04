@@ -23,12 +23,14 @@ const ID = 'account-usage'
 // poll well under the "never faster than a few seconds" floor.
 const REFRESH_MS = 60_000
 
-const PROVIDERS = ['openai-codex', 'anthropic', 'openrouter']
+const PROVIDERS = ['openai-codex', 'anthropic', 'cursor', 'antigravity', 'openrouter']
 
 const PROVIDER_LABEL = {
   'openai-codex': 'Codex',
   anthropic: 'Claude',
-  openrouter: 'OpenRouter'
+  openrouter: 'OpenRouter',
+  antigravity: 'Gemini',
+  cursor: 'Cursor'
 }
 
 // Each provider's own usage page (fixed constants, no user input):
@@ -37,7 +39,9 @@ const PROVIDER_LABEL = {
 const PROVIDER_USAGE_URL = {
   'openai-codex': 'https://chatgpt.com/codex/cloud/settings/analytics',
   anthropic: 'https://claude.ai/settings/usage',
-  openrouter: 'https://openrouter.ai/activity'
+  openrouter: 'https://openrouter.ai/activity',
+  antigravity: 'https://console.cloud.google.com/vertex-ai/generative/usage',
+  cursor: 'https://www.cursor.com/settings'
 }
 
 // Assigned in register(ctx) -- the sanctioned external-open door
@@ -58,7 +62,9 @@ function openUsage(provider) {
 // inherits the active theme color. Fixed 12px boxes align every mark to text.
 const PROVIDER_CODICON = {
   'openai-codex': 'openai',
-  anthropic: 'claude'
+  anthropic: 'claude',
+  antigravity: 'gemini', // SVG fallback in ProviderIcon
+  cursor: 'circle' // SVG in ProviderIcon
 }
 
 // Codicon brand marks have denser artwork than the supplied OpenRouter mark.
@@ -71,10 +77,16 @@ const PROVIDER_CODICON_SIZE = '10px'
 const ICON_OPTICAL_OFFSET_Y = {
   'openai-codex': 1,
   anthropic: 1,
-  openrouter: 0.5
+  openrouter: 0.5,
+  antigravity: 0.5,
+  cursor: 0.5
 }
 
-const OPENROUTER_PATH = 'M18.654 3.87a5.087 5.087 0 110 10.174L23.7 19.09c.64.641.187 1.737-.72 1.737H8.48a8.479 8.479 0 010-16.958h10.175zM8.479 7.26a5.087 5.087 0 100 10.176 5.087 5.087 0 000-10.175z'
+const OPENROUTER_PATH = 'M18.654 3.87a5.087 5.087 0 110 10.174L23.7 19.09c.64.641.187 1.737-.72 1.737H8.48a8.479 8.479 0 010-16.958h10.175zM8.479 7.26a5.087 5.087 0 100 10.176 5.087 5.087 0 100-10.175z'
+// Cursor + Antigravity mono glyphs from thesvg (MIT): glincker/thesvg
+// public/icons/cursor/mono.svg, public/icons/antigravity-google/mono.svg
+const GEMINI_PATH = 'M21.751 22.607c1.34 1.005 3.35.335 1.508-1.508C17.73 15.74 18.904 1 12.037 1 5.17 1 6.342 15.74.815 21.1c-2.01 2.009.167 2.511 1.507 1.506 5.192-3.517 4.857-9.714 9.715-9.714 4.857 0 4.522 6.197 9.714 9.715z'
+const CURSOR_PATH = 'M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23'
 
 const ICON_BOX_STYLE = {
   alignItems: 'center',
@@ -95,7 +107,14 @@ function pctColor(pct) {
 }
 
 function ProviderIcon({ provider }) {
-  const glyph = provider === 'openrouter'
+  const path = provider === 'openrouter'
+    ? OPENROUTER_PATH
+    : provider === 'antigravity'
+    ? GEMINI_PATH
+    : provider === 'cursor'
+    ? CURSOR_PATH
+    : null
+  const glyph = path
     ? jsx('svg', {
         fill: 'currentColor',
         focusable: 'false',
@@ -103,7 +122,7 @@ function ProviderIcon({ provider }) {
         style: { display: 'block' },
         viewBox: '0 0 24 24',
         width: 12,
-        children: jsx('path', { d: OPENROUTER_PATH, fillRule: 'evenodd' })
+        children: jsx('path', { d: path, fillRule: provider === 'openrouter' ? 'evenodd' : undefined })
       })
     : jsx('span', {
         className: `codicon codicon-${PROVIDER_CODICON[provider] ?? 'circle'}`,
@@ -134,7 +153,7 @@ function formatResetAt(iso) {
 function WindowRow({ w, provider }) {
   const resetLabel = formatResetAt(w.reset_at)
   const openRouterHeadline = provider === 'openrouter' ? openRouterText(w) : null
-  const headline = openRouterHeadline ?? (w.used_percent != null ? `${w.used_percent.toFixed(1)}%` : (w.detail ?? '\u2014'))
+  const headline = openRouterHeadline ?? (w.used_percent != null ? `${w.used_percent.toFixed(1)}%` : (w.detail ?? '—'))
   // Detail line is only useful when it adds info beyond the headline (i.e.
   // headline is a computed used/left summary, not just the raw detail text).
   const showDetail = w.detail && headline !== w.detail
@@ -177,7 +196,7 @@ function WindowRow({ w, provider }) {
 // "$<remaining> of $<total> ... remaining"; parse them so the UI can show
 // the pair a user actually wants at a glance: spent vs. left.
 function parseOpenRouterAmounts(w) {
-  const match = typeof w.detail === 'string' ? w.detail.match(/\$([\d.]+)\s+of\s+\$([\d.]+)/) : null
+  const match = typeof w.detail === 'string' ? w.detail.match(/\$([\\d.]+)\s+of\s+\$([\\d.]+)/) : null
   if (match) {
     const remaining = parseFloat(match[1])
     const total = parseFloat(match[2])
@@ -212,7 +231,14 @@ function sessionWindow(windows) {
 //     openRouterText above) for whichever window is the tighter constraint
 //     (credits balance vs per-key quota, lowest remaining wins).
 function chipEntryFor(card) {
-  if (!card.available) return { provider: card.provider, available: false, text: null }
+  if (!card.available) {
+    // ponytail: cursor/antigravity have no public usage API; show connection status only
+    // Upgrade path: add backend support when provider APIs expose quota endpoints
+    if (card.provider === 'cursor' || card.provider === 'antigravity') {
+      return { provider: card.provider, available: true, text: '✓' } // connected indicator
+    }
+    return { provider: card.provider, available: false, text: null }
+  }
 
   const windows = card.windows ?? []
 
@@ -314,11 +340,20 @@ function OpenRouterTooltip({ windows, plan }) {
 function providerTooltip(card) {
   const label = PROVIDER_LABEL[card.provider] ?? card.provider
   if (!card.available) {
-    return jsx('div', { children: `${label}: ${card.unavailable_reason || 'not connected'}` })
+    const reason = card.provider === 'cursor' || card.provider === 'antigravity'
+      ? 'Connected (real-time usage API unavailable)'
+      : card.unavailable_reason || 'not connected'
+    return jsx('div', { children: `${label}: ${reason}` })
   }
 
   const windows = card.windows ?? []
   if (card.provider === 'openrouter') return jsx(OpenRouterTooltip, { windows, plan: card.plan })
+
+  // Cursor / Antigravity: show connection status only
+  if ((card.provider === 'cursor' || card.provider === 'antigravity') && !windows.length) {
+    return jsx('div', { children: `${label}: Connected to account. Visit settings for detailed usage.` })
+  }
+
   return jsxs('div', {
     className: 'flex flex-col gap-1',
     children: [
@@ -434,7 +469,7 @@ export default {
     ctx.i18n.register({
       en: {
         title: 'Account Usage',
-        loading: 'Loading\u2026',
+        loading: 'Loading…',
         error: 'Could not load usage'
       }
     })
@@ -454,9 +489,23 @@ export default {
       render: () => jsx(ProviderUsageChip, { provider: 'anthropic' })
     })
     ctx.register({
-      id: 'openrouter-usage',
+      id: 'cursor-usage',
       area: 'statusBar.left',
       order: 142,
+      data: { toggleLabel: 'Cursor usage' },
+      render: () => jsx(ProviderUsageChip, { provider: 'cursor' })
+    })
+    ctx.register({
+      id: 'antigravity-usage',
+      area: 'statusBar.left',
+      order: 143,
+      data: { toggleLabel: 'Antigravity usage' },
+      render: () => jsx(ProviderUsageChip, { provider: 'antigravity' })
+    })
+    ctx.register({
+      id: 'openrouter-usage',
+      area: 'statusBar.left',
+      order: 144,
       data: { toggleLabel: 'OpenRouter usage' },
       render: () => jsx(ProviderUsageChip, { provider: 'openrouter' })
     })
