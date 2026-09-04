@@ -234,19 +234,95 @@ function chipEntryFor(card) {
   return { provider: card.provider, available: true, text: pct != null ? `${Math.round(pct)}%` : null }
 }
 
+// OpenRouter hover, Linear Monitor vocabulary: hairline-separated sections,
+// muted key left / tabular value right, remaining bars for dollar windows.
+// The backend packs multi-value windows into one " • "-joined detail string
+// (shared with /usage text rendering), so the split lives here — presentation
+// is the plugin's job, not the fetcher's.
+function detailRows(detail) {
+  return typeof detail === 'string' ? detail.split(' • ').map(s => s.trim()).filter(Boolean) : []
+}
+
+function KeyValueRow({ label, value }) {
+  return jsxs('div', {
+    className: 'flex items-center justify-between gap-2',
+    children: [
+      jsx('span', { className: 'text-(--ui-text-tertiary)', children: label }),
+      jsx('span', { className: 'tabular-nums text-foreground', children: value })
+    ]
+  })
+}
+
+function OpenRouterTooltip({ windows, plan }) {
+  const usage = windows.find(w => w.label === 'API key usage') ?? null
+  const limits = windows.filter(w => w !== usage && parseOpenRouterAmounts(w))
+  const usageRows = usage ? detailRows(usage.detail) : []
+  const [keyCaption, ...usedRows] = usageRows
+
+  const sections = []
+  if (usageRows.length) {
+    sections.push(jsxs('div', {
+      className: 'flex flex-col gap-0.5',
+      children: [
+        keyCaption ? jsx('div', { className: 'font-medium text-foreground', children: keyCaption.replace(/^Key: /, '') }) : null,
+        ...usedRows.map((row, i) => {
+          const sep = row.indexOf(': ')
+          return sep < 0
+            ? jsx('div', { className: 'text-(--ui-text-tertiary)', children: row, key: i })
+            : jsx(KeyValueRow, { label: row.slice(0, sep), value: row.slice(sep + 2), key: i })
+        })
+      ]
+    }))
+  }
+  for (const w of limits) {
+    const amounts = parseOpenRouterAmounts(w)
+    const total = amounts.used + amounts.remaining
+    const frac = total > 0 ? Math.max(0, Math.min(1, amounts.remaining / total)) : 0
+    sections.push(jsxs('div', {
+      className: 'flex flex-col gap-0.5 border-t border-(--ui-stroke-secondary) pt-1',
+      children: [
+        jsx('div', { className: 'text-(--ui-text-tertiary)', children: w.label }),
+        jsxs('div', {
+          className: 'flex items-center justify-between gap-2',
+          children: [
+            jsx('span', { className: 'tabular-nums text-foreground', children: `$${amounts.used.toFixed(2)} used` }),
+            jsx('span', { className: 'tabular-nums text-foreground', children: `$${amounts.remaining.toFixed(2)} left` })
+          ]
+        }),
+        jsx('div', {
+          className: 'h-1 w-full overflow-hidden rounded-full bg-(--ui-stroke-secondary)',
+          children: jsx('div', {
+            className: 'h-full rounded-full bg-(--ui-accent) transition-[width]',
+            style: { width: `${frac * 100}%` }
+          })
+        })
+      ]
+    }))
+  }
+  return jsxs('div', {
+    className: 'flex min-w-52 flex-col gap-1.5',
+    children: [
+      jsx('div', { className: 'font-medium text-foreground', children: plan ? `OpenRouter (${plan})` : 'OpenRouter' }),
+      ...sections
+    ]
+  })
+}
+
 // Detailed, multi-line popover content for one provider's chip: every window
 // row with progress bar, so hover shows the full breakdown.
 function providerTooltip(card) {
   const label = PROVIDER_LABEL[card.provider] ?? card.provider
+  const title = card.plan ? `${label} (${card.plan})` : label
   if (!card.available) {
-    return jsx('div', { children: `${label}: ${card.unavailable_reason || 'not connected'}` })
+    return jsx('div', { children: `${title}: ${card.unavailable_reason || 'not connected'}` })
   }
 
   const windows = card.windows ?? []
+  if (card.provider === 'openrouter') return jsx(OpenRouterTooltip, { windows, plan: card.plan })
   return jsxs('div', {
     className: 'flex flex-col gap-1',
     children: [
-      jsx('div', { className: 'font-medium text-foreground', children: label }),
+      jsx('div', { className: 'font-medium text-foreground', children: title }),
       ...windows.map((w, i) => jsx(WindowRow, { w, provider: card.provider, key: i }))
     ]
   })
