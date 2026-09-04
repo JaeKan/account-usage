@@ -195,8 +195,10 @@ function WindowRow({ w, provider }) {
 // allotted dollars instead. `detail` already carries both figures as
 // "$<remaining> of $<total> ... remaining"; parse them so the UI can show
 // the pair a user actually wants at a glance: spent vs. left.
+// Returns null unless BOTH figures are known -- a remaining-only window must
+// never reach the tooltip math (used.toFixed/bar would crash on null).
 function parseOpenRouterAmounts(w) {
-  const match = typeof w.detail === 'string' ? w.detail.match(/\$([\\d.]+)\s+of\s+\$([\\d.]+)/) : null
+  const match = typeof w.detail === 'string' ? w.detail.match(/\$([\d.]+)\s+of\s+\$([\d.]+)/) : null
   if (match) {
     const remaining = parseFloat(match[1])
     const total = parseFloat(match[2])
@@ -204,7 +206,7 @@ function parseOpenRouterAmounts(w) {
       return { used: Math.max(0, total - remaining), remaining }
     }
   }
-  return w.amount_usd != null ? { used: null, remaining: w.amount_usd } : null
+  return null
 }
 
 function openRouterText(w) {
@@ -302,31 +304,26 @@ function OpenRouterTooltip({ windows, plan }) {
   }
   for (const w of limits) {
     const amounts = parseOpenRouterAmounts(w)
-    const hasUsed = amounts.used != null
-    const total = hasUsed ? amounts.used + amounts.remaining : null
-    const frac = total != null && total > 0 ? Math.max(0, Math.min(1, amounts.remaining / total)) : null
+    const total = amounts.used + amounts.remaining
+    const frac = total > 0 ? Math.max(0, Math.min(1, amounts.remaining / total)) : 0
     sections.push(jsxs('div', {
       className: 'flex flex-col gap-0.5 border-t border-(--ui-stroke-secondary) pt-1',
       children: [
         jsx('div', { className: 'text-(--ui-text-tertiary)', children: w.label }),
-        hasUsed
-          ? jsxs('div', {
-              className: 'flex items-center justify-between gap-2',
-              children: [
-                jsx('span', { className: 'tabular-nums text-foreground', children: `$${amounts.used.toFixed(2)} used` }),
-                jsx('span', { className: 'tabular-nums text-foreground', children: `$${amounts.remaining.toFixed(2)} left` })
-              ]
-            })
-          : jsx('div', { className: 'tabular-nums text-foreground', children: `$${amounts.remaining.toFixed(2)} left` }),
-        frac != null
-          ? jsx('div', {
-              className: 'h-1 w-full overflow-hidden rounded-full bg-(--ui-stroke-secondary)',
-              children: jsx('div', {
-                className: 'h-full rounded-full bg-(--ui-accent) transition-[width]',
-                style: { width: `${frac * 100}%` }
-              })
-            })
-          : null
+        jsxs('div', {
+          className: 'flex items-center justify-between gap-2',
+          children: [
+            jsx('span', { className: 'tabular-nums text-foreground', children: `$${amounts.used.toFixed(2)} used` }),
+            jsx('span', { className: 'tabular-nums text-foreground', children: `$${amounts.remaining.toFixed(2)} left` })
+          ]
+        }),
+        jsx('div', {
+          className: 'h-1 w-full overflow-hidden rounded-full bg-(--ui-stroke-secondary)',
+          children: jsx('div', {
+            className: 'h-full rounded-full bg-(--ui-accent) transition-[width]',
+            style: { width: `${frac * 100}%` }
+          })
+        })
       ]
     }))
   }

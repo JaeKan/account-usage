@@ -47,9 +47,12 @@ test('hover shows the full breakdown popover', () => {
   assert.match(source, /jsx\(Popover,/)
 })
 
-test('openrouter tooltip never calls toFixed on a null used amount', () => {
-  assert.match(source, /const hasUsed = amounts\.used != null/)
-  assert.doesNotMatch(source, /children: `\$\$\{amounts\.used\.toFixed\(2\)\} used` \}\),\n            jsx\('span', \{ className: 'tabular-nums text-foreground', children: `\$\$\{amounts\.remaining\.toFixed\(2\)\} left` \}\)\n          \]\n        \}\),\n        jsx\('div', \{\n          className: 'h-1 w-full overflow-hidden rounded-full/)
+test('openrouter tooltip renders used text and bar for every limit row', () => {
+  // parse only yields rows with BOTH figures, so the loop below never sees null.
+  assert.doesNotMatch(source, /used: null/)
+  assert.match(source, /const total = amounts\.used \+ amounts\.remaining/)
+  assert.match(source, /children: `\$\$\{amounts\.used\.toFixed\(2\)\} used`/)
+  assert.match(source, /style: \{ width: `\$\{frac \* 100\}%` \}/)
 })
 
 test('chip click opens the provider usage page in a new window', () => {
