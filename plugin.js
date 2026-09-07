@@ -248,7 +248,7 @@ function chipEntryFor(card) {
     }
   }
 
-  const session = card.provider === 'cursor' ? windows.find(w => w.label === 'Current Period') : sessionWindow(windows)
+  const session = card.provider === 'cursor' ? windows.find(w => w.label === 'Cursor Models') : sessionWindow(windows)
   const pct = session?.used_percent ?? windows
     .map(w => w.used_percent)
     .filter(p => p != null)
