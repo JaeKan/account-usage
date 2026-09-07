@@ -343,7 +343,11 @@ function providerTooltip(card) {
     return jsx('div', { children: `${label}: ${reason}` })
   }
 
-  const windows = card.windows ?? []
+  const windows = card.provider === 'openai-codex'
+    ? (card.windows ?? []).filter(w => !['Reset credit validity', 'Limit reset credit'].includes(w.label) && !w.detail?.startsWith('Granted:')).map(w => w.label === 'Limit resets' ? { ...w, detail: w.detail?.split(' · ')[0] } : w)
+    : card.provider === 'cursor'
+      ? ['Cursor Models', 'Other Models'].map(label => (card.windows ?? []).find(w => w.label === label) ?? { label, detail: 'Usage unavailable' })
+      : card.windows ?? []
   if (card.provider === 'openrouter') return jsx(OpenRouterTooltip, { windows, plan: card.plan })
 
   // Cursor / Antigravity: show connection status only
