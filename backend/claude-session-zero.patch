@@ -1,0 +1,13 @@
+diff --git a/agent/account_usage.py b/agent/account_usage.py
+index 2619c48df8..f7ec8c46ad 100644
+--- a/agent/account_usage.py
++++ b/agent/account_usage.py
+@@ -850,7 +850,7 @@ def _fetch_anthropic_account_usage() -> Optional[AccountUsageSnapshot]:
+         # Dead scope row (0% with no reset = no active quota, e.g. an
+         # unprovisioned model window) — noise, not information.
+         resets_at = _parse_dt(window.get("resets_at"))
+-        if not used and resets_at is None:
++        if label not in {"Session", "Weekly"} and not used and resets_at is None:
+             return
+         # Dollar-denominated windows (limit/used/remaining dollars) have no
+         # meaningful percent — same posture as OpenRouter amount_usd.

@@ -40,8 +40,7 @@ const PROVIDER_USAGE_URL = {
   'openai-codex': 'https://chatgpt.com/codex/cloud/settings/analytics',
   anthropic: 'https://claude.ai/settings/usage',
   openrouter: 'https://openrouter.ai/activity',
-  antigravity: 'https://console.cloud.google.com/vertex-ai/generative/usage',
-  cursor: 'https://www.cursor.com/settings'
+  cursor: 'https://cursor.com/dashboard/spending'
 }
 
 // Assigned in register(ctx) -- the sanctioned external-open door
@@ -429,7 +428,7 @@ function ProviderUsageChip({ provider }) {
             'text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover) hover:text-foreground'
           ),
           type: 'button',
-          onClick: () => { haptic('tap'); openUsage(provider) },
+          onClick: PROVIDER_USAGE_URL[provider] ? () => { haptic('tap'); openUsage(provider) } : undefined,
           onFocus: () => showNow(),
           onBlur: () => scheduleClose(),
           onMouseEnter: () => markHover(true),
