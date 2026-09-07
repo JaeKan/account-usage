@@ -10,4 +10,8 @@ response = httpx.Response(200, json=payload, request=httpx.Request('GET', 'https
 with patch.object(usage, 'resolve_anthropic_token', return_value='test'), patch.object(usage, '_is_oauth_token', return_value=True), patch.object(usage, '_fetch_anthropic_plan', return_value=None), patch.object(httpx.Client, 'get', return_value=response):
     result = usage.fetch_account_usage('anthropic')
 assert [(w.label, w.used_percent) for w in result.windows] == [('Session', 0), ('Weekly', 0)]
+payload['five_hour']['utilization'] = 0.5
+response = httpx.Response(200, json=payload, request=httpx.Request('GET', 'https://api.anthropic.com/api/oauth/usage'))
+with patch.object(usage, 'resolve_anthropic_token', return_value='test'), patch.object(usage, '_is_oauth_token', return_value=True), patch.object(usage, '_fetch_anthropic_plan', return_value=None), patch.object(httpx.Client, 'get', return_value=response):
+    assert usage.fetch_account_usage('anthropic').windows[0].used_percent == 0.5
 print('CLAUDE_ZERO_SESSION_OK')

@@ -29,7 +29,7 @@ const PROVIDER_LABEL = {
   'openai-codex': 'Codex',
   anthropic: 'Claude',
   openrouter: 'OpenRouter',
-  antigravity: 'Gemini',
+  antigravity: 'Antigravity',
   cursor: 'Cursor'
 }
 
@@ -184,7 +184,10 @@ function WindowRow({ w, provider }) {
           })
         : null,
       showDetail ? jsx('div', { className: 'text-(--ui-text-tertiary)', children: w.detail }) : null,
-      resetLabel ? jsx('div', { className: 'text-(--ui-text-tertiary)', children: `resets ${resetLabel}` }) : null
+      resetLabel ? jsx('div', { className: 'text-(--ui-text-tertiary)', children: `resets ${resetLabel}` })
+        : provider === 'anthropic' && w.label === 'Session'
+          ? jsx('div', { className: 'text-(--ui-text-tertiary)', children: 'resets: not provided by API' })
+          : null
     ]
   })
 }
@@ -232,14 +235,7 @@ function sessionWindow(windows) {
 //     openRouterText above) for whichever window is the tighter constraint
 //     (credits balance vs per-key quota, lowest remaining wins).
 function chipEntryFor(card) {
-  if (!card.available) {
-    // ponytail: cursor/antigravity have no public usage API; show connection status only
-    // Upgrade path: add backend support when provider APIs expose quota endpoints
-    if (card.provider === 'cursor' || card.provider === 'antigravity') {
-      return { provider: card.provider, available: true, text: '✓' } // connected indicator
-    }
-    return { provider: card.provider, available: false, text: null }
-  }
+  if (!card.available) return { provider: card.provider, available: false, text: null }
 
   const windows = card.windows ?? []
 
@@ -252,7 +248,7 @@ function chipEntryFor(card) {
     }
   }
 
-  const session = sessionWindow(windows)
+  const session = card.provider === 'cursor' ? windows.find(w => w.label === 'Current Period') : sessionWindow(windows)
   const pct = session?.used_percent ?? windows
     .map(w => w.used_percent)
     .filter(p => p != null)
@@ -340,10 +336,10 @@ function OpenRouterTooltip({ windows, plan }) {
 // row with progress bar, so hover shows the full breakdown.
 function providerTooltip(card) {
   const label = PROVIDER_LABEL[card.provider] ?? card.provider
+  // This installation's owner confirmed Business Standard; API still says Team.
+  const plan = card.provider === 'openai-codex' && card.plan === 'Team' ? 'Business Standard' : card.plan
   if (!card.available) {
-    const reason = card.provider === 'cursor' || card.provider === 'antigravity'
-      ? 'Connected (real-time usage API unavailable)'
-      : card.unavailable_reason || 'not connected'
+    const reason = card.unavailable_reason || 'usage unavailable'
     return jsx('div', { children: `${label}: ${reason}` })
   }
 
@@ -359,7 +355,7 @@ function providerTooltip(card) {
     className: 'flex flex-col gap-1',
     children: [
       jsx('div', { className: 'font-medium text-foreground', children: label }),
-      card.plan ? jsx('div', { className: 'text-(--ui-text-tertiary)', children: `Plan: ${card.plan}` }) : null,
+      plan ? jsx('div', { className: 'text-(--ui-text-tertiary)', children: `Plan: ${plan}` }) : null,
       ...windows.map((w, i) => jsx(WindowRow, { w, provider: card.provider, key: i }))
     ]
   })
@@ -382,8 +378,8 @@ function UsageChipPlaceholder({ provider, isError }) {
 
 function ProviderUsageChip({ provider }) {
   const { data, isError } = useQuery({
-    queryKey: ['account-usage'],
-    queryFn: () => host.request('account.usage', {}),
+    queryKey: ['account-usage', provider],
+    queryFn: () => host.request('account.usage', { provider }),
     refetchInterval: REFRESH_MS,
     staleTime: REFRESH_MS
   })
