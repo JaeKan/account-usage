@@ -184,10 +184,7 @@ function WindowRow({ w, provider }) {
           })
         : null,
       showDetail ? jsx('div', { className: 'text-(--ui-text-tertiary)', children: w.detail }) : null,
-      resetLabel ? jsx('div', { className: 'text-(--ui-text-tertiary)', children: `resets ${resetLabel}` })
-        : provider === 'anthropic' && w.label === 'Session'
-          ? jsx('div', { className: 'text-(--ui-text-tertiary)', children: 'resets: not provided by API' })
-          : null
+      resetLabel ? jsx('div', { className: 'text-(--ui-text-tertiary)', children: `resets ${resetLabel}` }) : null
     ]
   })
 }

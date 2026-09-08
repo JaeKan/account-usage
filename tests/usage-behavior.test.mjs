@@ -7,8 +7,8 @@ const executable = source.replace(/import[\s\S]*?from '[^']+'\s*/g, '').replace(
 const render = (type, props) => ({ type, ...props })
 const ctx = vm.createContext({ jsx: render, jsxs: render, useState: () => [false, () => {}], useRef: () => ({}), cn: (...x) => x.join(' '), useQuery: () => ({ data: { cards: [] } }), host: {}, setTimeout, clearTimeout })
 vm.runInContext(executable, ctx)
-test('Claude null reset is explicit and valid reset is rendered', () => {
-  assert.match(JSON.stringify(vm.runInContext("WindowRow({provider:'anthropic',w:{label:'Session',used_percent:0}})", ctx)), /not provided by API/)
+test('Claude null reset shows no reset line; valid reset is rendered', () => {
+  assert.doesNotMatch(JSON.stringify(vm.runInContext("WindowRow({provider:'anthropic',w:{label:'Session',used_percent:0}})", ctx)), /resets/)
   assert.doesNotMatch(JSON.stringify(vm.runInContext("WindowRow({provider:'anthropic',w:{label:'Session',used_percent:5,reset_at:'2026-09-10T10:00:00Z'}})", ctx)), /not provided/)
 })
 test('Antigravity label and owner-confirmed Codex plan', () => {
