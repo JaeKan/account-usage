@@ -28,4 +28,9 @@ assert any('2 resets banked' in d for d in result.details)
 assert any(w.label == 'Limit resets' and '2 available' in (w.detail or '') for w in result.windows)
 # Cursor + Antigravity wiring must survive Hermes updates (wiped 2026-09-11).
 assert {"cursor", "antigravity"} <= set(usage._USAGE_FETCHERS)
+# Cooldown with no cached snapshot → honest exhausted card, never "not connected".
+usage._LAST_CODEX_SNAPSHOT = None
+with patch.object(usage, '_resolve_codex_usage_credentials', side_effect=usage.CodexQuotaCooldown(3600)):
+    cd = usage.fetch_account_usage('openai-codex')
+assert cd is not None and not cd.available and 'resets' in (cd.unavailable_reason or '')
 print('RPC_ISOLATION_AND_RESET_CREDITS_OK')
