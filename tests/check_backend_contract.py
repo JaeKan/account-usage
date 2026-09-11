@@ -19,11 +19,11 @@ with patch.object(usage, 'fetch_account_usage', return_value=None) as fetch:
     assert fetch.call_count == 1
 
 payload = {'rate_limit': {}, 'rate_limit_reset_credits': {'available_count': 2, 'applicable_available_count': 0}}
-credits = {'credits': [{'status': 'available', 'title': 'Full reset (Weekly + 5 hr)', 'granted_at': '2026-09-04T02:00:00Z', 'expires_at': '2026-10-04T02:00:00Z'}]}
 def get(client, url, **kwargs):
-    return httpx.Response(200, json=credits if url.endswith('rate-limit-reset-credits') else payload, request=httpx.Request('GET', url))
+    return httpx.Response(200, json=payload, request=httpx.Request('GET', url))
 with patch.object(usage, '_resolve_codex_usage_credentials', return_value=('test', '', None)), patch.object(httpx.Client, 'get', get):
     result = usage.fetch_account_usage('openai-codex')
-assert any(w.label == 'Limit resets' and '2 available' in w.detail for w in result.windows)
-assert any('Expires: 2026-10-04' in (w.detail or '') for w in result.windows)
+# Current Hermes reads banked resets from the usage payload itself (no separate
+# rate-limit-reset-credits call) and surfaces them as a details line.
+assert any('2 resets banked' in d for d in result.details)
 print('RPC_ISOLATION_AND_RESET_CREDITS_OK')
