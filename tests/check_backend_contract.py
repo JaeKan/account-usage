@@ -23,9 +23,9 @@ def get(client, url, **kwargs):
     return httpx.Response(200, json=payload, request=httpx.Request('GET', url))
 with patch.object(usage, '_resolve_codex_usage_credentials', return_value=('test', '', None)), patch.object(httpx.Client, 'get', get):
     result = usage.fetch_account_usage('openai-codex')
-# Current Hermes reads banked resets from the usage payload itself (no separate
-# rate-limit-reset-credits call) and surfaces them as a details line.
+# Banked resets surface as a details line plus a Limit resets window.
 assert any('2 resets banked' in d for d in result.details)
+assert any(w.label == 'Limit resets' and '2 available' in (w.detail or '') for w in result.windows)
 # Cursor + Antigravity wiring must survive Hermes updates (wiped 2026-09-11).
 assert {"cursor", "antigravity"} <= set(usage._USAGE_FETCHERS)
 print('RPC_ISOLATION_AND_RESET_CREDITS_OK')
