@@ -26,4 +26,6 @@ with patch.object(usage, '_resolve_codex_usage_credentials', return_value=('test
 # Current Hermes reads banked resets from the usage payload itself (no separate
 # rate-limit-reset-credits call) and surfaces them as a details line.
 assert any('2 resets banked' in d for d in result.details)
+# Cursor + Antigravity wiring must survive Hermes updates (wiped 2026-09-11).
+assert {"cursor", "antigravity"} <= set(usage._USAGE_FETCHERS)
 print('RPC_ISOLATION_AND_RESET_CREDITS_OK')

@@ -1,11 +1,11 @@
-"""Re-apply the account.usage gateway RPC after a Hermes update (idempotent).
+"""Re-apply the account.usage backend after a Hermes update (idempotent).
 
 Why this exists: the plugin calls `host.request('account.usage', {provider})`,
-which needs a handler inside the Hermes source tree
-(`tui_gateway/methods_session.py` + a `_LONG_HANDLERS` entry in
-`tui_gateway/server.py`). Hermes updates wipe hand-edits there — that is
-exactly how the chips broke after the 2026-09-11 restart. This script is the
-single source of truth for that handler: re-run it after every Hermes update,
+which needs (1) a handler in `tui_gateway/methods_session.py` + a
+`_LONG_HANDLERS` entry in `tui_gateway/server.py`, and (2) the Cursor /
+Antigravity fetchers wired into `agent/account_usage.py`. Hermes updates wipe
+all three — that is how the chips broke after the 2026-09-11 restart. This
+script is the single source of truth: re-run it after every Hermes update,
 then restart Hermes.
 
 Usage (Windows):
@@ -64,6 +64,84 @@ ANCHOR_SESSION = '@_session_method("session.context_breakdown")'
 ANCHOR_LONG = '"session.usage", "billing.step_up"'
 LONG_REPLACEMENT = '"session.usage", "account.usage", "billing.step_up"'
 
+# Fetcher sources of truth live beside this script; the agent/ copies are
+# synced below. Marker = our unique docstring line; a foreign file at the
+# same path is never overwritten.
+_FETCHER_MARKERS = {
+    "cursor_usage_fetcher.py": "Cursor's undocumented current-period usage endpoint.",
+    "antigravity_usage_fetcher.py": "Antigravity quota via `agy -p /usage",
+}
+
+WIRING_ANCHOR = "_USAGE_FETCHERS: dict"
+WIRING_DICT_ANCHOR = '"openrouter": _fetch_openrouter_account_usage,\n}'
+WIRING_DICT_REPLACEMENT = (
+    '"openrouter": _fetch_openrouter_account_usage,\n'
+    '    "cursor": _fetch_cursor_account_usage, "antigravity": _fetch_antigravity_account_usage,\n}'
+)
+
+WIRING_FUNCTIONS = '''# account-usage plugin providers (source of truth: desktop-plugins/account-usage/backend/reapply_account_usage.py — do not hand-edit).
+def _fetch_cursor_account_usage(
+    base_url: Optional[str] = None, api_key: Optional[str] = None,
+) -> Optional[AccountUsageSnapshot]:
+    try:
+        from agent.cursor_usage_fetcher import fetch_cursor_usage
+
+        usage = fetch_cursor_usage()
+        if usage is None:
+            return None
+        try:
+            reset_at = _parse_dt(float(usage["billingCycleEnd"]) / 1000)
+        except (KeyError, TypeError, ValueError, OverflowError):
+            reset_at = None
+        return AccountUsageSnapshot(
+            provider="cursor",
+            source="cursor_dashboard_api",
+            fetched_at=_utc_now(),
+            plan=usage.get("plan"),
+            windows=tuple(
+                AccountUsageWindow(label=label, used_percent=float(usage[key]), reset_at=reset_at)
+                for key, label in (("autoPercentUsed", "Cursor Models"), ("apiPercentUsed", "Other Models"))
+                if isinstance(usage.get(key), (int, float)) and not isinstance(usage[key], bool) and math.isfinite(usage[key])
+            ),
+        )
+    except Exception:
+        # Undocumented endpoint: never let it break account.usage.
+        return None
+
+
+def _fetch_antigravity_account_usage(
+    base_url: Optional[str] = None, api_key: Optional[str] = None,
+) -> Optional[AccountUsageSnapshot]:
+    try:
+        from agent.antigravity_usage_fetcher import fetch_antigravity_usage
+
+        usage = fetch_antigravity_usage()
+        rows = (usage or {}).get("windows") or []
+        windows = [
+            AccountUsageWindow(
+                label=str(w.get("label") or "Usage"),
+                used_percent=float(w["used_percent"]),
+                reset_at=_parse_dt(w.get("reset_at")),
+            )
+            for w in rows
+            if isinstance(w.get("used_percent"), (int, float))
+        ]
+        if not windows:
+            return None
+        return AccountUsageSnapshot(
+            provider="antigravity",
+            source="agy_cli",
+            fetched_at=_utc_now(),
+            plan="Google AI Pro",  # No plan/tier field anywhere in `agy` CLI — owner-confirmed value.
+            windows=tuple(windows),
+        )
+    except Exception:
+        # agy CLI missing/failing: fail open for connection-only display.
+        return None
+
+
+'''
+
 
 def _hermes_agent_dir() -> Path:
     if len(sys.argv) > 1:
@@ -88,12 +166,39 @@ def main() -> int:
     root = _hermes_agent_dir()
     session_file = root / "tui_gateway" / "methods_session.py"
     server_file = root / "tui_gateway" / "server.py"
-    for p in (session_file, server_file):
+    usage_file = root / "agent" / "account_usage.py"
+    for p in (session_file, server_file, usage_file):
         if not p.is_file():
             print(f"missing: {p} (hermes-agent dir: {root})")
             return 2
 
     changed = []
+    backend_dir = Path(__file__).resolve().parent
+    agent_dir = root / "agent"
+    for name, marker in _FETCHER_MARKERS.items():
+        dst = agent_dir / name
+        if dst.is_file():
+            existing = _read(dst)
+            if existing == _read(backend_dir / name):
+                print(f"{name}: already in sync, skip")
+                continue
+            if marker not in existing:
+                print(f"{name}: foreign file present, NOT overwriting — resolve manually")
+                continue
+        _write(dst, _read(backend_dir / name))
+        changed.append(name)
+
+    text = _read(usage_file)
+    if "_fetch_cursor_account_usage" in text and "_fetch_antigravity_account_usage" in text:
+        print("account_usage.py: already wired, skip")
+    elif WIRING_ANCHOR not in text or WIRING_DICT_ANCHOR not in text:
+        print("account_usage.py: anchor not found, Hermes source moved — update the script")
+        return 2
+    else:
+        text = text.replace(WIRING_ANCHOR, WIRING_FUNCTIONS + WIRING_ANCHOR, 1)
+        _write(usage_file, text.replace(WIRING_DICT_ANCHOR, WIRING_DICT_REPLACEMENT, 1))
+        changed.append("account_usage.py")
+
     text = _read(session_file)
     if '"account.usage"' in text:
         print("methods_session.py: already applied, skip")
