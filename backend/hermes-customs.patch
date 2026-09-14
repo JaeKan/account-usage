@@ -1,28 +1,8 @@
 diff --git a/agent/account_usage.py b/agent/account_usage.py
-index 564b74572c..f270a87915 100644
+index 564b74572c..2199d451c1 100644
 --- a/agent/account_usage.py
 +++ b/agent/account_usage.py
-@@ -17,6 +17,19 @@ if TYPE_CHECKING:
- 
- logger = logging.getLogger(__name__)
- 
-+
-+class CodexQuotaCooldown(RuntimeError):
-+    """All pool credentials are rate/billing-limited; carries recovery ETA."""
-+
-+    def __init__(self, wait_seconds: int):
-+        self.wait_seconds = wait_seconds
-+        super().__init__(f"cooling down, retry in {wait_seconds}s")
-+
-+
-+# Last good Codex snapshot: on pool cooldown no API call is possible, so the
-+# chip re-shows the previous popover instead of going blank.
-+_LAST_CODEX_SNAPSHOT: Optional[AccountUsageSnapshot] = None
-+
- _DEPLETED_LINE = "Status: access depleted — top up to restore"
- 
- 
-@@ -30,6 +43,10 @@ class AccountUsageWindow:
+@@ -30,6 +30,10 @@ class AccountUsageWindow:
      used_percent: Optional[float] = None
      reset_at: Optional[datetime] = None
      detail: Optional[str] = None
@@ -33,7 +13,7 @@ index 564b74572c..f270a87915 100644
  
  
  @dataclass(frozen=True)
-@@ -292,6 +309,10 @@ def _codex_backend_urls(base_url: str) -> tuple[str, str, str]:
+@@ -292,6 +296,10 @@ def _codex_backend_urls(base_url: str) -> tuple[str, str, str]:
      return (prefix + "/usage", prefix + "/rate-limit-reset-credits", prefix + "/rate-limit-reset-credits/consume")
  
  
@@ -44,36 +24,30 @@ index 564b74572c..f270a87915 100644
  def _resolve_codex_usage_credentials(
      base_url: Optional[str], api_key: Optional[str],
  ) -> tuple[str, str, Optional[str]]:
-@@ -322,8 +343,27 @@ def _resolve_codex_usage_credentials(
+@@ -320,12 +328,19 @@ def _resolve_codex_usage_credentials(
+         return creds["api_key"], str(creds.get("base_url", "") or "").strip(), account_id
+     except AuthError:
          logger.debug("codex ▸ /usage runtime resolver returned no creds; trying pool", exc_info=True)
-     # Tier 3: pool credentials have no account_id concept → header omitted.
+-    # Tier 3: pool credentials have no account_id concept → header omitted.
++    # Tier 3: pool select() refuses entries in chat/agent-call cooldown, but that
++    # cooldown says nothing about the /usage endpoint's own truth (observed: pool
++    # cached a 09-11 429 while the account showed 100% in the ChatGPT UI on
++    # 09-14 — quota can refill before the reported ETA). /usage is a cheap
++    # read-only probe, so always force-refresh and hit it directly with any
++    # live (non-dead) entry instead of trusting the cached reset_at.
      from agent.credential_pool import load_pool
 -    entry = load_pool("openai-codex").select()
 +    pool = load_pool("openai-codex")
-+    entry = pool.select()
++    entry = pool.select() or pool._find(lambda e: e.last_status != "dead")
      if entry is None:
-+        # select() refuses entries in inference-cooldown, but that cooldown is
-+        # from CHAT/agent 429s — it says nothing about the /usage endpoint's
-+        # own truth, which is a cheap read-only probe. A cooldown entry still
-+        # carries a live, valid token (only the model-call quota is limited),
-+        # so use it directly for the usage check instead of trusting a stale
-+        # cached reset_at (real quota can refill before the reported ETA —
-+        # observed: account showed 100% in the ChatGPT UI while pool cooldown
-+        # said 09-15). If the live call still 429s, that's the true signal.
-+        stale = pool._find(lambda e: e.last_status != "dead")
-+        if stale is not None:
-+            refreshed = pool._refresh_entry(stale, force=True) or stale
-+            return refreshed.runtime_api_key, str(refreshed.runtime_base_url or base_url or "").strip(), None
-+        resume_at = pool.next_available_at()
-+        if resume_at is not None:
-+            import time as _time
-+
-+            wait_s = max(0, int(resume_at - _time.time()))
-+            raise CodexQuotaCooldown(wait_s)
          raise RuntimeError("No available openai-codex credential in credential pool")
-     return entry.runtime_api_key, str(entry.runtime_base_url or base_url or "").strip(), None
+-    return entry.runtime_api_key, str(entry.runtime_base_url or base_url or "").strip(), None
++    refreshed = pool._refresh_entry(entry, force=True) or entry
++    return refreshed.runtime_api_key, str(refreshed.runtime_base_url or base_url or "").strip(), None
  
-@@ -338,30 +378,6 @@ def _codex_headers(token: str, account_id: Optional[str]) -> dict[str, str]:
+ 
+ def _codex_banked_resets(payload: dict) -> int:
+@@ -338,30 +353,6 @@ def _codex_headers(token: str, account_id: Optional[str]) -> dict[str, str]:
              **({"ChatGPT-Account-Id": account_id} if account_id else {})}
  
  
@@ -104,34 +78,13 @@ index 564b74572c..f270a87915 100644
  def _plural(count: int) -> str:
      return "s" if count != 1 else ""
  
-@@ -369,20 +385,98 @@ def _plural(count: int) -> str:
- def _fetch_codex_account_usage(
+@@ -370,19 +361,76 @@ def _fetch_codex_account_usage(
      base_url: Optional[str] = None, api_key: Optional[str] = None,
  ) -> Optional[AccountUsageSnapshot]:
--    token, resolved_base_url, account_id = _resolve_codex_usage_credentials(base_url, api_key)
+     token, resolved_base_url, account_id = _resolve_codex_usage_credentials(base_url, api_key)
 -    payload = _get_json(_codex_backend_urls(resolved_base_url)[0], _codex_headers(token, account_id), timeout=15.0)
 -    windows = _usage_windows(payload.get("rate_limit") or {}, (("primary_window", "Session"), ("secondary_window", "Weekly")),
 -                             "used_percent", "reset_at")
-+    global _LAST_CODEX_SNAPSHOT
-+    try:
-+        token, resolved_base_url, account_id = _resolve_codex_usage_credentials(base_url, api_key)
-+    except CodexQuotaCooldown as exc:
-+        # Rate-limited: no live call is possible — re-show the last real
-+        # snapshot verbatim instead of going blank (no synthetic 100%/ETA UI).
-+        # With no snapshot yet this process, say exactly that (weekly 100%
-+        # until the pool's reset time) instead of a false "not connected".
-+        if _LAST_CODEX_SNAPSHOT is not None:
-+            return _LAST_CODEX_SNAPSHOT
-+        import time as _time
-+
-+        reset_at = datetime.fromtimestamp(_time.time() + exc.wait_seconds, tz=timezone.utc)
-+        return AccountUsageSnapshot(
-+            provider="openai-codex",
-+            source="usage_api",
-+            fetched_at=_utc_now(),
-+            windows=(AccountUsageWindow(label="Weekly", used_percent=100.0, reset_at=reset_at),),
-+            unavailable_reason=f"Weekly limit reached — resets {reset_at.strftime('%m-%d %H:%M')}",
-+        )
 +    headers = {
 +        "Authorization": f"Bearer {token}",
 +        "Accept": "application/json",
@@ -203,7 +156,7 @@ index 564b74572c..f270a87915 100644
 +            details.append("Credits balance: unlimited")
 +    if credits.get("overage_limit_reached"):
 +        details.append("Overage limit reached")
-+    snapshot = AccountUsageSnapshot(
++    return AccountUsageSnapshot(
 +        provider="openai-codex",
 +        source="usage_api",
 +        fetched_at=_utc_now(),
@@ -211,12 +164,10 @@ index 564b74572c..f270a87915 100644
 +        windows=tuple(windows),
 +        details=tuple(details),
 +    )
-+    _LAST_CODEX_SNAPSHOT = snapshot
-+    return snapshot
  
  
  @dataclass(frozen=True)
-@@ -496,6 +590,36 @@ def redeem_codex_reset_credit(
+@@ -496,6 +544,36 @@ def redeem_codex_reset_credit(
      return _codex_reset_outcome(body, available)
  
  
@@ -253,7 +204,7 @@ index 564b74572c..f270a87915 100644
  def _fetch_anthropic_account_usage(
      base_url: Optional[str] = None, api_key: Optional[str] = None
  ) -> Optional[AccountUsageSnapshot]:
-@@ -503,63 +627,254 @@ def _fetch_anthropic_account_usage(
+@@ -503,63 +581,254 @@ def _fetch_anthropic_account_usage(
      if not token:
          return None
      if not _is_oauth_token(token):
