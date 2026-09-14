@@ -1,5 +1,5 @@
 diff --git a/agent/account_usage.py b/agent/account_usage.py
-index 564b74572c..624f123ffc 100644
+index 564b74572c..f270a87915 100644
 --- a/agent/account_usage.py
 +++ b/agent/account_usage.py
 @@ -17,6 +17,19 @@ if TYPE_CHECKING:
@@ -44,7 +44,7 @@ index 564b74572c..624f123ffc 100644
  def _resolve_codex_usage_credentials(
      base_url: Optional[str], api_key: Optional[str],
  ) -> tuple[str, str, Optional[str]]:
-@@ -322,8 +343,18 @@ def _resolve_codex_usage_credentials(
+@@ -322,8 +343,27 @@ def _resolve_codex_usage_credentials(
          logger.debug("codex ▸ /usage runtime resolver returned no creds; trying pool", exc_info=True)
      # Tier 3: pool credentials have no account_id concept → header omitted.
      from agent.credential_pool import load_pool
@@ -52,9 +52,18 @@ index 564b74572c..624f123ffc 100644
 +    pool = load_pool("openai-codex")
 +    entry = pool.select()
      if entry is None:
-+        # All entries are cooling down (rate-limit/billing), not logged-out --
-+        # surface *when* it recovers instead of a bare "not connected" so the
-+        # statusbar chip doesn't imply a re-login is needed (#account-usage).
++        # select() refuses entries in inference-cooldown, but that cooldown is
++        # from CHAT/agent 429s — it says nothing about the /usage endpoint's
++        # own truth, which is a cheap read-only probe. A cooldown entry still
++        # carries a live, valid token (only the model-call quota is limited),
++        # so use it directly for the usage check instead of trusting a stale
++        # cached reset_at (real quota can refill before the reported ETA —
++        # observed: account showed 100% in the ChatGPT UI while pool cooldown
++        # said 09-15). If the live call still 429s, that's the true signal.
++        stale = pool._find(lambda e: e.last_status != "dead")
++        if stale is not None:
++            refreshed = pool._refresh_entry(stale, force=True) or stale
++            return refreshed.runtime_api_key, str(refreshed.runtime_base_url or base_url or "").strip(), None
 +        resume_at = pool.next_available_at()
 +        if resume_at is not None:
 +            import time as _time
@@ -64,7 +73,7 @@ index 564b74572c..624f123ffc 100644
          raise RuntimeError("No available openai-codex credential in credential pool")
      return entry.runtime_api_key, str(entry.runtime_base_url or base_url or "").strip(), None
  
-@@ -338,30 +369,6 @@ def _codex_headers(token: str, account_id: Optional[str]) -> dict[str, str]:
+@@ -338,30 +378,6 @@ def _codex_headers(token: str, account_id: Optional[str]) -> dict[str, str]:
              **({"ChatGPT-Account-Id": account_id} if account_id else {})}
  
  
@@ -95,7 +104,7 @@ index 564b74572c..624f123ffc 100644
  def _plural(count: int) -> str:
      return "s" if count != 1 else ""
  
-@@ -369,20 +376,98 @@ def _plural(count: int) -> str:
+@@ -369,20 +385,98 @@ def _plural(count: int) -> str:
  def _fetch_codex_account_usage(
      base_url: Optional[str] = None, api_key: Optional[str] = None,
  ) -> Optional[AccountUsageSnapshot]:
@@ -207,7 +216,7 @@ index 564b74572c..624f123ffc 100644
  
  
  @dataclass(frozen=True)
-@@ -496,6 +581,36 @@ def redeem_codex_reset_credit(
+@@ -496,6 +590,36 @@ def redeem_codex_reset_credit(
      return _codex_reset_outcome(body, available)
  
  
@@ -244,7 +253,7 @@ index 564b74572c..624f123ffc 100644
  def _fetch_anthropic_account_usage(
      base_url: Optional[str] = None, api_key: Optional[str] = None
  ) -> Optional[AccountUsageSnapshot]:
-@@ -503,63 +618,254 @@ def _fetch_anthropic_account_usage(
+@@ -503,63 +627,254 @@ def _fetch_anthropic_account_usage(
      if not token:
          return None
      if not _is_oauth_token(token):
@@ -552,10 +561,10 @@ index 1e972f1004..b0362a26ee 100644
                <ContribBoundary id={c.id} variant="chip">
                  <ContribRender render={c.render!} />
 diff --git a/tui_gateway/methods_session.py b/tui_gateway/methods_session.py
-index a6f38cd4ec..7cd661c3a5 100644
+index efc946d44c..0a5062bb17 100644
 --- a/tui_gateway/methods_session.py
 +++ b/tui_gateway/methods_session.py
-@@ -1178,6 +1178,61 @@ def _(rid, params: dict, session: dict) -> dict:
+@@ -1172,6 +1172,61 @@ def _(rid, params: dict, session: dict) -> dict:
      return _ok(rid, usage)
  
  
@@ -618,10 +627,10 @@ index a6f38cd4ec..7cd661c3a5 100644
  def _(rid, params: dict, session: dict) -> dict:
      if (agent := session.get("agent")) is None:
 diff --git a/tui_gateway/server.py b/tui_gateway/server.py
-index 064e2784c6..488616088c 100644
+index bafa526aa2..60d69fde6c 100644
 --- a/tui_gateway/server.py
 +++ b/tui_gateway/server.py
-@@ -162,7 +162,7 @@ _DETAIL_MODES = frozenset({"hidden", "collapsed", "expanded"})
+@@ -163,7 +163,7 @@ _DETAIL_MODES = frozenset({"hidden", "collapsed", "expanded"})
  _LONG_HANDLERS = frozenset({
      "session.foreign.list", "session.foreign.preview", "session.foreign.import",
      "billing.state", "subscription.state", "subscription.preview", "subscription.change",
