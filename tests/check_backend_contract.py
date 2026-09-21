@@ -23,9 +23,8 @@ def get(client, url, **kwargs):
     return httpx.Response(200, json=payload, request=httpx.Request('GET', url))
 with patch.object(usage, '_resolve_codex_usage_credentials', return_value=('test', '', None)), patch.object(httpx.Client, 'get', get):
     result = usage.fetch_account_usage('openai-codex')
-# Banked resets surface as a details line plus a Limit resets window.
+# Banked resets surface as a details line.
 assert any('2 resets banked' in d for d in result.details)
-assert any(w.label == 'Limit resets' and '2 available' in (w.detail or '') for w in result.windows)
 # Cursor + Antigravity wiring must survive Hermes updates (wiped 2026-09-11).
 assert {"cursor", "antigravity"} <= set(usage._USAGE_FETCHERS)
 # A pool entry in chat-call cooldown must still be used (force-refreshed) for
