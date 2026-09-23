@@ -239,11 +239,16 @@ function chipEntryFor(card) {
 
   if (card.provider === 'openrouter') {
     const withAmounts = windows.map(w => ({ w, amounts: parseOpenRouterAmounts(w) })).filter(x => x.amounts)
-    if (withAmounts.length) {
-      const tightest = withAmounts.reduce((min, x) => (x.amounts.remaining < min.amounts.remaining ? x : min))
-      const text = openRouterText(tightest.w)
-      if (text) return { provider: card.provider, available: true, text }
+    // Account credits balance caps every key quota; upstream reports it only in details.
+    const balance = parseFloat((card.details ?? []).join(' ').match(/Credits balance: \$([\d.]+)/)?.[1])
+    const tightest = withAmounts.length
+      ? withAmounts.reduce((min, x) => (x.amounts.remaining < min.amounts.remaining ? x : min))
+      : null
+    if (Number.isFinite(balance) && (!tightest || balance < tightest.amounts.remaining)) {
+      return { provider: card.provider, available: true, text: `$${balance.toFixed(2)} left` }
     }
+    const text = tightest && openRouterText(tightest.w)
+    if (text) return { provider: card.provider, available: true, text }
   }
 
   const session = card.provider === 'cursor' ? windows.find(w => w.label === 'Cursor Models') : sessionWindow(windows)

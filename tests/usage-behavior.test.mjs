@@ -30,3 +30,7 @@ test('upstream shapes: Claude chip = Current session (not week), OpenRouter deta
   const tip = JSON.stringify(vm.runInContext("const t = providerTooltip({provider:'openrouter',available:true,windows:[{label:'API key quota',used_percent:22.8,detail:'$23.15 of $30.00 remaining • resets monthly'}],details:['Credits balance: $13.60','API key usage: $35.40 total • $0.33 today • $6.85 this month']}); OpenRouterTooltip(t)", ctx))
   for (const t of ['Credits balance', '$13.60', 'Used (all time)', '$35.40', 'Used today', 'Used this month', '$6.85 used', '$23.15 left']) assert.ok(tip.includes(t), t)
 })
+test('OpenRouter chip = lower of credits balance and key quota', () => {
+  const chip = vm.runInContext("chipEntryFor({provider:'openrouter',available:true,windows:[{label:'API key quota',detail:'$23.15 of $30.00 remaining'}],details:['Credits balance: $13.60']})", ctx)
+  assert.equal(chip.text, '$13.60 left')
+})
