@@ -118,10 +118,10 @@ index bd2b86c5f3..582321b1cd 100644
                <ContribBoundary id={c.id} variant="chip">
                  <ContribRender render={c.render!} />
 diff --git a/tui_gateway/methods_session.py b/tui_gateway/methods_session.py
-index b5f5fce3ec..cbb25f2ace 100644
+index b5f5fce3ec..bb15bbb492 100644
 --- a/tui_gateway/methods_session.py
 +++ b/tui_gateway/methods_session.py
-@@ -1252,6 +1252,61 @@ def _account_usage_lines(session: dict) -> list[str]:
+@@ -1252,6 +1252,62 @@ def _account_usage_lines(session: dict) -> list[str]:
      return render_account_usage_lines(snapshot)
  
  
@@ -171,6 +171,7 @@ index b5f5fce3ec..cbb25f2ace 100644
 +                }
 +                for w in snapshot.windows
 +            ],
++            "details": list(snapshot.details),
 +        }
 +
 +    # Five independent HTTP round-trips serialized one-by-one used to cost

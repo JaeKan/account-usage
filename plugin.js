@@ -222,7 +222,8 @@ function openRouterText(w) {
 // highest used_percent only when no Session window is present (e.g. an
 // unlimited/legacy account) so the chip never goes blank.
 function sessionWindow(windows) {
-  return windows.find(w => w.label === 'Session') ?? null
+  // Codex: 'Session'; upstream Claude fetcher: 'Current session' (five_hour).
+  return windows.find(w => w.label === 'Session' || w.label === 'Current session') ?? null
 }
 
 // Per-provider chip/tooltip headline:
@@ -273,11 +274,16 @@ function KeyValueRow({ label, value }) {
   })
 }
 
-function OpenRouterTooltip({ windows, plan }) {
+function OpenRouterTooltip({ windows, plan, details = [] }) {
   const usage = windows.find(w => w.label === 'API key usage') ?? null
   const limits = windows.filter(w => w !== usage && parseOpenRouterAmounts(w))
-  const usageRows = usage ? detailRows(usage.detail) : []
-  const [keyCaption, ...usedRows] = usageRows
+  // Upstream fetcher puts balance + key usage in snapshot.details, not windows.
+  const usageRows = usage
+    ? detailRows(usage.detail)
+    : details.flatMap(d => detailRows(d.replace(/^API key usage: \$([\d.]+) total/, 'Used (all time): $$$1')))
+      .map(r => r.replace(/^(\$[\d.]+) (today|this week|this month)$/, 'Used $2: $1'))
+  const keyCaption = usageRows[0]?.startsWith('Key: ') ? usageRows[0] : null
+  const usedRows = keyCaption ? usageRows.slice(1) : usageRows
 
   const sections = []
   if (usageRows.length) {
@@ -345,7 +351,7 @@ function providerTooltip(card) {
     : card.provider === 'cursor'
       ? ['Cursor Models', 'Other Models'].map(label => (card.windows ?? []).find(w => w.label === label) ?? { label, detail: 'Usage unavailable' })
       : card.windows ?? []
-  if (card.provider === 'openrouter') return jsx(OpenRouterTooltip, { windows, plan: card.plan })
+  if (card.provider === 'openrouter') return jsx(OpenRouterTooltip, { windows, plan: card.plan, details: card.details ?? [] })
 
   // Cursor / Antigravity: show connection status only
   if ((card.provider === 'cursor' || card.provider === 'antigravity') && !windows.length) {
